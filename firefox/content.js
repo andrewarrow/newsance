@@ -14,6 +14,36 @@ function detectSite() {
   return null;
 }
 
+function extractHackerNewsUsernames() {
+  const usernames = [];
+  
+  // Find all links with class "hnuser" - these are the username links
+  const userLinks = document.querySelectorAll('a.hnuser');
+  
+  userLinks.forEach(link => {
+    const username = link.textContent.trim();
+    if (username) {
+      usernames.push(username);
+    }
+  });
+  
+  return usernames;
+}
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'GET_USERNAMES') {
+    const site = detectSite();
+    if (site === 'hackernews') {
+      const usernames = extractHackerNewsUsernames();
+      sendResponse({ usernames: usernames });
+    } else {
+      sendResponse({ usernames: [] });
+    }
+    return true;
+  }
+});
+
 // Simple site detection on load
 const site = detectSite();
 if (site) {
