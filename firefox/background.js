@@ -6,6 +6,9 @@ const userDataCache = new Map();
 const REQUEST_DELAY = 2000; // 2 seconds between requests
 let isProcessingQueue = false;
 
+// Load cached data from storage on startup
+loadCachedData();
+
 // Listen for messages from popup/content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'FETCH_USER_DATA') {
@@ -17,10 +20,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function fetchUserData(usernames) {
   for (const username of usernames) {
-    // Check cache first
+    // Check in-memory cache first
     if (userDataCache.has(username)) {
       // Send cached data immediately
       broadcastUserData(username, userDataCache.get(username));
+      continue;
+    }
+    
+    // Check persistent storage
+    const stored = await getStoredUserData(username);
+    if (stored) {
+      // Load into memory cache and broadcast
+      userDataCache.set(username, stored);
+      broadcastUserData(username, stored);
       continue;
     }
     
@@ -47,6 +59,9 @@ async function processUserDataQueue() {
     const userInfo = await fetchSingleUserData(username);
     userDataCache.set(username, userInfo);
     
+    // Store in persistent storage
+    await storeUserData(username, userInfo);
+    
     // Broadcast update to all listeners (popup)
     broadcastUserData(username, userInfo);
     
@@ -54,6 +69,9 @@ async function processUserDataQueue() {
     console.error(`Failed to fetch data for ${username}:`, error);
     const errorInfo = { username, karma: 'Error', created: 'Error' };
     userDataCache.set(username, errorInfo);
+    
+    // Store error info in persistent storage too
+    await storeUserData(username, errorInfo);
     
     broadcastUserData(username, errorInfo);
   }
@@ -103,4 +121,53 @@ async function fetchSingleUserData(username) {
   }
   
   return { username, karma, created };
+}
+
+// Storage functions for persistent caching
+async function loadCachedData() {
+  try {
+    const result = await chrome.storage.local.get(['userDataCache']);
+    if (result.userDataCache) {
+      const cached = JSON.parse(result.userDataCache);
+      for (const [username, data] of Object.entries(cached)) {
+        userDataCache.set(username, data);
+      }
+      console.log(`[Newsance] Loaded ${userDataCache.size} cached users from storage`);
+    }
+  } catch (error) {
+    console.error('[Newsance] Failed to load cached data:', error);
+  }
+}
+
+async function storeUserData(username, userInfo) {
+  try {
+    userDataCache.set(username, userInfo);
+    
+    // Convert Map to object for storage
+    const cacheObj = {};
+    for (const [key, value] of userDataCache.entries()) {
+      cacheObj[key] = value;
+    }
+    
+    await chrome.storage.local.set({
+      userDataCache: JSON.stringify(cacheObj)
+    });
+    
+    console.log(`[Newsance] Stored data for ${username}`);
+  } catch (error) {
+    console.error(`[Newsance] Failed to store data for ${username}:`, error);
+  }
+}
+
+async function getStoredUserData(username) {
+  try {
+    const result = await chrome.storage.local.get(['userDataCache']);
+    if (result.userDataCache) {
+      const cached = JSON.parse(result.userDataCache);
+      return cached[username] || null;
+    }
+  } catch (error) {
+    console.error(`[Newsance] Failed to get stored data for ${username}:`, error);
+  }
+  return null;
 }
