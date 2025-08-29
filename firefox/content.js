@@ -52,12 +52,100 @@ function extractHackerNewsUsernames() {
   return data;
 }
 
+function extractRedditUsernames() {
+  const data = [];
+  const seenUsernames = new Set();
+  
+  // Method 1: Find user links with href="/user/username/" pattern
+  const userLinks = document.querySelectorAll('a[href^="/user/"]');
+  userLinks.forEach(link => {
+    const href = link.getAttribute('href');
+    const match = href.match(/^\/user\/([^\/]+)\//);
+    
+    if (match && match[1] && !seenUsernames.has(match[1])) {
+      const username = match[1];
+      seenUsernames.add(username);
+      
+      let subreddit = findSubredditContext(link);
+      data.push({
+        username: username,
+        site: subreddit
+      });
+    }
+  });
+  
+  // Method 2: Find usernames in text content (pattern: </span></span>USERNAME</a>)
+  // Look for links that contain avatar spans followed by username text
+  const avatarLinks = document.querySelectorAll('a[href^="/user/"] span[avatar] ~ span, a[href^="/user/"] [avatar=""]');
+  avatarLinks.forEach(avatarSpan => {
+    const link = avatarSpan.closest('a[href^="/user/"]');
+    if (link) {
+      // Get the text content of the link, which should be the username
+      const linkText = link.textContent.trim();
+      
+      // Extract username from href as backup
+      const href = link.getAttribute('href');
+      const hrefMatch = href.match(/^\/user\/([^\/]+)\//);
+      const username = hrefMatch && hrefMatch[1] ? hrefMatch[1] : linkText;
+      
+      if (username && !seenUsernames.has(username) && username.length > 2) {
+        seenUsernames.add(username);
+        
+        let subreddit = findSubredditContext(link);
+        data.push({
+          username: username,
+          site: subreddit
+        });
+      }
+    }
+  });
+  
+  // Method 3: Fallback - search all links and extract usernames from text content
+  const allLinks = document.querySelectorAll('a');
+  allLinks.forEach(link => {
+    const href = link.getAttribute('href');
+    if (href && href.startsWith('/user/')) {
+      const textContent = link.textContent.trim();
+      // Only consider if text looks like a username (alphanumeric, underscores, hyphens)
+      if (textContent && /^[a-zA-Z0-9_-]{3,}$/.test(textContent) && !seenUsernames.has(textContent)) {
+        seenUsernames.add(textContent);
+        
+        let subreddit = findSubredditContext(link);
+        data.push({
+          username: textContent,
+          site: subreddit
+        });
+      }
+    }
+  });
+  
+  return data;
+}
+
+function findSubredditContext(element) {
+  // Look for parent elements that might contain subreddit info
+  let parent = element.closest('[data-testid*="search"], .search-result, article, .comment, [class*="search"], [class*="comment"], [class*="post"]');
+  if (parent) {
+    const subredditLink = parent.querySelector('a[href^="/r/"]');
+    if (subredditLink) {
+      const subredditMatch = subredditLink.getAttribute('href').match(/^\/r\/([^\/]+)/);
+      if (subredditMatch && subredditMatch[1]) {
+        return 'r/' + subredditMatch[1];
+      }
+    }
+  }
+  return 'N/A';
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_USERNAMES') {
     const site = detectSite();
     if (site === 'hackernews') {
       const data = extractHackerNewsUsernames();
+      sendResponse({ usernames: data });
+    } else if (site === 'reddit') {
+      const data = extractRedditUsernames();
       sendResponse({ usernames: data });
     } else {
       sendResponse({ usernames: [] });

@@ -21,10 +21,20 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } else if (url.includes('reddit.com')) {
       siteDisplay.textContent = 'Reddit';
-      usernamesContainer.innerHTML = '<div class="no-data">Reddit support coming soon</div>';
+      
+      // Send message to content script to get usernames
+      chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_USERNAMES' }, (response) => {
+        if (response && response.usernames && response.usernames.length > 0) {
+          displayUsernames(response.usernames);
+          // For Reddit, we show subreddit instead of karma/created for now
+          displayRedditTable();
+        } else {
+          usernamesContainer.innerHTML = '<div class="no-data">No usernames found on this Reddit page</div>';
+        }
+      });
     } else {
       siteDisplay.textContent = 'n/a';
-      usernamesContainer.innerHTML = '<div class="no-data">Visit Hacker News to see usernames</div>';
+      usernamesContainer.innerHTML = '<div class="no-data">Visit Hacker News or Reddit to see usernames</div>';
     }
   });
 });
@@ -93,6 +103,23 @@ function updateTable() {
       <td>${userData.site}</td>
       <td>${userData.karma}</td>
       <td>${userData.created}</td>
+    </tr>`;
+  });
+  
+  tableHtml += '</tbody></table>';
+  usernamesContainer.innerHTML = tableHtml;
+}
+
+function displayRedditTable() {
+  const usernamesContainer = document.getElementById('usernames-container');
+  
+  let tableHtml = '<table class="usernames-table">';
+  tableHtml += '<thead><tr><th>Username</th><th>Subreddit</th></tr></thead><tbody>';
+  
+  userDataMap.forEach(userData => {
+    tableHtml += `<tr>
+      <td>${userData.username}</td>
+      <td>${userData.site}</td>
     </tr>`;
   });
   
