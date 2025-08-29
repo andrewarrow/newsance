@@ -3,7 +3,10 @@ console.log('[Newsance] Background script loaded');
 // Rate limiting queue for user data requests
 const userDataQueue = [];
 const userDataCache = new Map();
-const REQUEST_DELAY = 2000; // 2 seconds between requests
+// Random delay between 1-6 seconds
+function getRandomDelay() {
+  return Math.floor(Math.random() * 5000) + 1000; // 1000-6000ms
+}
 let isProcessingQueue = false;
 
 // Load cached data from storage on startup
@@ -76,8 +79,10 @@ async function processUserDataQueue() {
     broadcastUserData(username, errorInfo);
   }
   
-  // Wait before processing next request
-  setTimeout(processUserDataQueue, REQUEST_DELAY);
+  // Wait random time before processing next request
+  const delay = getRandomDelay();
+  console.log(`[Newsance] Waiting ${delay}ms before next request`);
+  setTimeout(processUserDataQueue, delay);
 }
 
 function broadcastUserData(username, userInfo) {
