@@ -15,19 +15,41 @@ function detectSite() {
 }
 
 function extractHackerNewsUsernames() {
-  const usernames = [];
+  const data = [];
   
-  // Find all links with class "hnuser" - these are the username links
-  const userLinks = document.querySelectorAll('a.hnuser');
+  // Find all submission rows
+  const submissions = document.querySelectorAll('tr.athing');
   
-  userLinks.forEach(link => {
-    const username = link.textContent.trim();
+  submissions.forEach(submission => {
+    // Find the next sibling tr that contains the subtext with username
+    const subtextRow = submission.nextElementSibling;
+    if (!subtextRow) return;
+    
+    const userLink = subtextRow.querySelector('a.hnuser');
+    if (!userLink) return;
+    
+    const username = userLink.textContent.trim();
+    
+    // Find the site information in the current submission row
+    const titleLine = submission.querySelector('.titleline');
+    let site = '';
+    
+    if (titleLine) {
+      const siteStr = titleLine.querySelector('.sitestr');
+      if (siteStr) {
+        site = siteStr.textContent.trim();
+      }
+    }
+    
     if (username) {
-      usernames.push(username);
+      data.push({
+        username: username,
+        site: site || 'N/A'
+      });
     }
   });
   
-  return usernames;
+  return data;
 }
 
 // Listen for messages from popup
@@ -35,8 +57,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_USERNAMES') {
     const site = detectSite();
     if (site === 'hackernews') {
-      const usernames = extractHackerNewsUsernames();
-      sendResponse({ usernames: usernames });
+      const data = extractHackerNewsUsernames();
+      sendResponse({ usernames: data });
     } else {
       sendResponse({ usernames: [] });
     }

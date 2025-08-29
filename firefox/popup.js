@@ -25,14 +25,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function displayUsernames(usernames) {
+function displayUsernames(data) {
   const usernamesContainer = document.getElementById('usernames-container');
   
   let tableHtml = '<table class="usernames-table">';
-  tableHtml += '<thead><tr><th>Username</th></tr></thead><tbody>';
+  tableHtml += '<thead><tr><th>Username</th><th>Site</th></tr></thead><tbody>';
   
-  usernames.forEach(username => {
-    tableHtml += `<tr><td>${username}</td></tr>`;
+  data.forEach(item => {
+    // Handle both old format (just strings) and new format (objects)
+    if (typeof item === 'string') {
+      tableHtml += `<tr><td>${item}</td><td>N/A</td></tr>`;
+    } else {
+      tableHtml += `<tr><td>${item.username}</td><td>${item.site}</td></tr>`;
+    }
   });
   
   tableHtml += '</tbody></table>';
