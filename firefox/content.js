@@ -56,17 +56,26 @@ function extractRedditUsernames() {
   const data = [];
   const seenUsernames = new Set();
   
-  // Method 1: Find user links with href="/user/username/" pattern
+  console.log('[Newsance Reddit] Starting username extraction...');
+  
+  // Method 1: Find direct user links with href="/user/username/" pattern
   const userLinks = document.querySelectorAll('a[href^="/user/"]');
-  userLinks.forEach(link => {
+  console.log(`[Newsance Reddit] Method 1: Found ${userLinks.length} user links`);
+  
+  userLinks.forEach((link, index) => {
     const href = link.getAttribute('href');
     const match = href.match(/^\/user\/([^\/]+)\//);
+    const textContent = link.textContent.trim();
+    
+    console.log(`[Newsance Reddit] Method 1 Link ${index}: href="${href}", text="${textContent}"`);
     
     if (match && match[1] && !seenUsernames.has(match[1])) {
       const username = match[1];
       seenUsernames.add(username);
       
       let subreddit = findSubredditContext(link);
+      console.log(`[Newsance Reddit] Method 1 Added: ${username} from ${subreddit}`);
+      
       data.push({
         username: username,
         site: subreddit
@@ -74,51 +83,77 @@ function extractRedditUsernames() {
     }
   });
   
-  // Method 2: Find usernames in text content (pattern: </span></span>USERNAME</a>)
-  // Look for links that contain avatar spans followed by username text
-  const avatarLinks = document.querySelectorAll('a[href^="/user/"] span[avatar] ~ span, a[href^="/user/"] [avatar=""]');
-  avatarLinks.forEach(avatarSpan => {
-    const link = avatarSpan.closest('a[href^="/user/"]');
-    if (link) {
-      // Get the text content of the link, which should be the username
-      const linkText = link.textContent.trim();
+  // Method 2: Look for username patterns next to avatars or profile icons
+  // Search for elements that look like "username · time ago" pattern
+  const timePatterns = document.querySelectorAll('*');
+  let usernameTimeElements = [];
+  
+  timePatterns.forEach(el => {
+    const text = el.textContent;
+    // Look for patterns like "username · X min. ago" or "username · X hr. ago"
+    if (text && (text.includes('min. ago') || text.includes('hr. ago') || text.includes('day ago'))) {
+      usernameTimeElements.push(el);
+    }
+  });
+  
+  console.log(`[Newsance Reddit] Method 2: Found ${usernameTimeElements.length} time elements`);
+  
+  usernameTimeElements.forEach((el, index) => {
+    const text = el.textContent.trim();
+    // Extract username from patterns like "username · 29 min. ago"
+    const match = text.match(/^([a-zA-Z0-9_-]{3,})\s*·\s*\d+\s*(min|hr|day)/);
+    
+    console.log(`[Newsance Reddit] Method 2 Element ${index}: text="${text}"`);
+    
+    if (match && match[1] && !seenUsernames.has(match[1])) {
+      const username = match[1];
+      seenUsernames.add(username);
       
-      // Extract username from href as backup
-      const href = link.getAttribute('href');
-      const hrefMatch = href.match(/^\/user\/([^\/]+)\//);
-      const username = hrefMatch && hrefMatch[1] ? hrefMatch[1] : linkText;
+      let subreddit = findSubredditContext(el);
+      console.log(`[Newsance Reddit] Method 2 Added: ${username} from ${subreddit}`);
       
-      if (username && !seenUsernames.has(username) && username.length > 2) {
-        seenUsernames.add(username);
+      data.push({
+        username: username,
+        site: subreddit
+      });
+    }
+  });
+  
+  // Method 3: Look for clickable usernames (the ones that appear as links in the UI)
+  const allElements = document.querySelectorAll('*');
+  console.log(`[Newsance Reddit] Method 3: Scanning ${allElements.length} elements for username patterns`);
+  
+  let foundUsernameElements = 0;
+  
+  allElements.forEach(el => {
+    // Skip if element has children - we want leaf text nodes
+    if (el.children.length > 0) return;
+    
+    const text = el.textContent.trim();
+    
+    // Look for elements that contain just a username (3+ chars, alphanumeric/underscore/dash)
+    if (text && /^[a-zA-Z0-9_-]{3,}$/.test(text) && !seenUsernames.has(text)) {
+      // Check if this looks like it's near an avatar or in a comment context
+      const nearAvatar = el.closest('[class*="avatar"], [class*="user"], [class*="author"], [class*="comment"]') ||
+                         el.parentElement?.querySelector('img[alt*="avatar"], img[src*="avatar"], [class*="avatar"]');
+      
+      if (nearAvatar) {
+        foundUsernameElements++;
+        seenUsernames.add(text);
         
-        let subreddit = findSubredditContext(link);
+        let subreddit = findSubredditContext(el);
+        console.log(`[Newsance Reddit] Method 3 Added: ${text} from ${subreddit}`);
+        
         data.push({
-          username: username,
+          username: text,
           site: subreddit
         });
       }
     }
   });
   
-  // Method 3: Fallback - search all links and extract usernames from text content
-  const allLinks = document.querySelectorAll('a');
-  allLinks.forEach(link => {
-    const href = link.getAttribute('href');
-    if (href && href.startsWith('/user/')) {
-      const textContent = link.textContent.trim();
-      // Only consider if text looks like a username (alphanumeric, underscores, hyphens)
-      if (textContent && /^[a-zA-Z0-9_-]{3,}$/.test(textContent) && !seenUsernames.has(textContent)) {
-        seenUsernames.add(textContent);
-        
-        let subreddit = findSubredditContext(link);
-        data.push({
-          username: textContent,
-          site: subreddit
-        });
-      }
-    }
-  });
-  
+  console.log(`[Newsance Reddit] Method 3: Found ${foundUsernameElements} username elements`);
+  console.log(`[Newsance Reddit] Extraction complete. Found ${data.length} unique usernames:`, data.map(d => d.username));
   return data;
 }
 
