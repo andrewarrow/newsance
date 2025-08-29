@@ -5,6 +5,12 @@
   "permissions": [
     "activeTab"
   ],
+  "host_permissions": [
+    "https://news.ycombinator.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
   "content_scripts": [{
     "matches": ["https://news.ycombinator.com/*", "https://*.reddit.com/*"],
     "js": ["content.js"]
