@@ -1,0 +1,20 @@
+{
+  "name": "newsance",
+  "version": "1.0",
+  "manifest_version": 3,
+  "permissions": [
+    "activeTab"
+  ],
+  "content_scripts": [{
+    "matches": ["https://news.ycombinator.com/*", "https://*.reddit.com/*"],
+    "js": ["content.js"]
+  }],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "newsance",
+    "default_icon": "eye.png"
+  },
+  "icons": {
+    "48": "eye.png"
+  }
+}
