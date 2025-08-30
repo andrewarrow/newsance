@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const usernamesContainer = document.getElementById('usernames-container');
     
     if (url.includes('news.ycombinator.com')) {
-      siteDisplay.textContent = 'Hacker News';
+      const siteSpan = siteDisplay.querySelector('span');
+      siteSpan.textContent = 'Hacker News';
       
       // Send message to content script to get usernames
       chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_USERNAMES' }, (response) => {
@@ -20,7 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     } else if (url.includes('reddit.com')) {
-      siteDisplay.textContent = 'Reddit';
+      const siteSpan = siteDisplay.querySelector('span');
+      const randomWordBtn = document.getElementById('randomWordBtn');
+      
+      siteSpan.textContent = 'Reddit';
+      randomWordBtn.style.display = 'inline-block';
+      
+      // Set up random word button
+      randomWordBtn.addEventListener('click', handleRandomWordClick);
       
       // Send message to content script to get usernames
       chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_USERNAMES' }, (response) => {
@@ -33,7 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     } else {
-      siteDisplay.textContent = 'n/a';
+      const siteSpan = siteDisplay.querySelector('span');
+      siteSpan.textContent = 'n/a';
       usernamesContainer.innerHTML = '<div class="no-data">Visit Hacker News or Reddit to see usernames</div>';
     }
   });
@@ -179,4 +188,65 @@ function addNewUsernames(newUsernamesData) {
     
     console.log(`[Newsance Popup] Added ${newUsernamesData.length} new usernames. Total: ${userDataMap.size}`);
   });
+}
+
+async function handleRandomWordClick() {
+  const randomWordBtn = document.getElementById('randomWordBtn');
+  
+  try {
+    // Disable button and show loading state
+    randomWordBtn.disabled = true;
+    randomWordBtn.textContent = 'Loading...';
+    
+    console.log('[Newsance] Fetching random word...');
+    
+    // Fetch random word from API
+    const response = await fetch('https://random-word-api.herokuapp.com/word');
+    const data = await response.json();
+    const randomWord = data[0];
+    
+    console.log('[Newsance] Got random word:', randomWord);
+    
+    // Clear current usernames since we're going to a new search
+    userDataMap.clear();
+    
+    // Navigate to new Reddit search URL
+    const searchUrl = `https://www.reddit.com/search/?q=${encodeURIComponent(randomWord)}&type=comments&cId=42e061d2-a478-41ca-986b-4695d778cbf3&iId=415de118-88be-44d3-81c5-1ff7766fd79e`;
+    
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      console.log('[Newsance] Current tab:', tabs[0]);
+      console.log('[Newsance] Navigating to:', searchUrl);
+      
+      chrome.tabs.update(tabs[0].id, { url: searchUrl }, (updatedTab) => {
+        console.log('[Newsance] Tab updated:', updatedTab);
+        
+        if (chrome.runtime.lastError) {
+          console.error('[Newsance] Error updating tab:', chrome.runtime.lastError);
+          
+          // Re-enable button on error
+          randomWordBtn.disabled = false;
+          randomWordBtn.textContent = 'Permission Error';
+          
+          setTimeout(() => {
+            randomWordBtn.textContent = 'Random Word';
+          }, 3000);
+        } else {
+          // Close the popup after successful navigation
+          window.close();
+        }
+      });
+    });
+    
+  } catch (error) {
+    console.error('[Newsance] Error fetching random word:', error);
+    
+    // Re-enable button and show error state
+    randomWordBtn.disabled = false;
+    randomWordBtn.textContent = 'Error - Try Again';
+    
+    // Reset button text after 3 seconds
+    setTimeout(() => {
+      randomWordBtn.textContent = 'Random Word';
+    }, 3000);
+  }
 }
