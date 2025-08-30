@@ -63,6 +63,10 @@ function fetchUserData(data) {
         userData.created = message.userInfo.created;
         updateTable();
       }
+    } else if (message.type === 'NEW_USERNAMES_DETECTED') {
+      // Handle new usernames detected from infinite scroll
+      console.log(`[Newsance Popup] Received ${message.usernames.length} new usernames:`, message.usernames.map(u => u.username));
+      addNewUsernames(message.usernames);
     }
   });
   
@@ -125,4 +129,54 @@ function displayRedditTable() {
   
   tableHtml += '</tbody></table>';
   usernamesContainer.innerHTML = tableHtml;
+}
+
+function addNewUsernames(newUsernamesData) {
+  // Get current tab URL to determine site type
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const url = tabs[0].url;
+    let isHackerNews = url && url.includes('news.ycombinator.com');
+    
+    newUsernamesData.forEach(item => {
+      const username = typeof item === 'string' ? item : item.username;
+      const site = typeof item === 'string' ? 'N/A' : item.site;
+      
+      // Skip if we already have this username
+      if (userDataMap.has(username)) {
+        return;
+      }
+      
+      // Add to our data map
+      if (isHackerNews) {
+        // For Hacker News, initialize with loading state for karma/created
+        userDataMap.set(username, {
+          username,
+          site,
+          karma: 'Loading...',
+          created: 'Loading...'
+        });
+        
+        // Request user data for new username
+        chrome.runtime.sendMessage({
+          type: 'FETCH_USER_DATA',
+          usernames: [username]
+        });
+      } else {
+        // For Reddit, just show username and subreddit
+        userDataMap.set(username, {
+          username,
+          site
+        });
+      }
+    });
+    
+    // Update the table to show new usernames
+    if (isHackerNews) {
+      updateTable();
+    } else {
+      displayRedditTable();
+    }
+    
+    console.log(`[Newsance Popup] Added ${newUsernamesData.length} new usernames. Total: ${userDataMap.size}`);
+  });
 }

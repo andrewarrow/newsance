@@ -157,16 +157,107 @@ if (site) {
   console.log(`[Newsance] Active on ${site}`);
 }
 
+// Track current usernames to detect new ones
+let currentUsernames = new Set();
+let debounceTimeout = null;
+
+// Function to send new usernames to popup
+function sendNewUsernames(newUsernames) {
+  if (newUsernames.length > 0) {
+    console.log(`[Newsance] Sending ${newUsernames.length} new usernames to popup:`, newUsernames.map(u => u.username));
+    
+    // Send to popup via runtime message
+    chrome.runtime.sendMessage({
+      type: 'NEW_USERNAMES_DETECTED',
+      usernames: newUsernames
+    }).catch(() => {
+      // Ignore errors if popup is closed
+    });
+  }
+}
+
+// Function to check for new usernames (debounced)
+function checkForNewUsernames() {
+  const site = detectSite();
+  if (site !== 'reddit') return;
+  
+  const allUsernames = extractRedditUsernames();
+  const newUsernames = [];
+  
+  allUsernames.forEach(userData => {
+    if (!currentUsernames.has(userData.username)) {
+      currentUsernames.add(userData.username);
+      newUsernames.push(userData);
+    }
+  });
+  
+  if (newUsernames.length > 0) {
+    sendNewUsernames(newUsernames);
+  }
+}
+
+// Debounced version to prevent excessive parsing
+function debouncedCheck() {
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+  }
+  debounceTimeout = setTimeout(checkForNewUsernames, 1000); // Wait 1 second after changes stop
+}
+
 // Monitor for URL changes (for single-page apps like Reddit)
 let lastUrl = window.location.href;
-const observer = new MutationObserver(() => {
+const observer = new MutationObserver((mutations) => {
+  // Check for URL changes
   if (lastUrl !== window.location.href) {
     lastUrl = window.location.href;
     const newSite = detectSite();
     if (newSite) {
       console.log(`[Newsance] URL changed, still active on ${newSite}`);
+      // Reset username tracking on URL change
+      currentUsernames.clear();
     }
+  }
+  
+  // Check for new content being added (infinite scroll)
+  const hasNewContent = mutations.some(mutation => 
+    mutation.type === 'childList' && 
+    mutation.addedNodes.length > 0 &&
+    Array.from(mutation.addedNodes).some(node => 
+      node.nodeType === Node.ELEMENT_NODE && 
+      (node.querySelector && (node.querySelector('a[class*="text-neutral-content-strong"]') || 
+                             node.querySelector('a[href^="/user/"]')))
+    )
+  );
+  
+  if (hasNewContent) {
+    console.log('[Newsance] New content detected, checking for new usernames...');
+    debouncedCheck();
   }
 });
 
 observer.observe(document, { subtree: true, childList: true });
+
+// Also listen for scroll events to catch infinite scroll loading
+let scrollTimeout = null;
+window.addEventListener('scroll', () => {
+  if (scrollTimeout) {
+    clearTimeout(scrollTimeout);
+  }
+  scrollTimeout = setTimeout(() => {
+    if (detectSite() === 'reddit') {
+      console.log('[Newsance] Scroll detected, checking for new content...');
+      debouncedCheck();
+    }
+  }, 500);
+});
+
+// Initialize current usernames on load
+if (detectSite() === 'reddit') {
+  setTimeout(() => {
+    const initialUsernames = extractRedditUsernames();
+    initialUsernames.forEach(userData => {
+      currentUsernames.add(userData.username);
+    });
+    console.log(`[Newsance] Initialized with ${currentUsernames.size} usernames`);
+  }, 1000);
+}
